@@ -104,11 +104,20 @@ prefect agent start -q default
 - Variables de entorno para credenciales
 
 ### ✅ DevOps y Despliegue
-- Contenerización completa con Docker
-- CI/CD con GitHub Actions
-- Tests automatizados
-
+```bash
+docker compose down -v
+docker compose up -d --build
+# Backend: http://localhost:8000 (Swagger: /docs)
+# Frontend: http://localhost
+# Health via Nginx: http://localhost/api/health
 ## 📁 Estructura del Proyecto
+
+## CI/CD
+- Workflow: `.github/workflows/ci.yml`
+- Jobs: `smoke` (construye imagen y prueba `/health` con SQLite), `security-scan` (no bloquea), `docker-build` (build sin push).
+- Botón **Run workflow** habilitado (workflow_dispatch).
+
+
 
 ```
 hotel-costa-bella/
