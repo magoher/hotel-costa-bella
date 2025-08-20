@@ -1,3 +1,5 @@
+![CI](https://github.com/magoher/hotel-costa-bella/actions/workflows/ci.yml/badge.svg)
+
 # Hotel Costa Bella - Aplicación Web Completa
 
 ## 🏨 Descripción del Proyecto
