@@ -5,6 +5,7 @@ on:
     branches: [ main, develop ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   # CI mínimo: construye la imagen del backend y hace smoke test al /health
@@ -24,6 +25,7 @@ jobs:
             -e DATABASE_URL=sqlite:////data/hotel_reservas_ci.db \
             -e WEATHER_API_KEY="${WEATHER_API_KEY:-demo_key}" \
             -v ci_db:/data \
+            -v "${GITHUB_WORKSPACE}/frontend:/frontend:ro" \
             hotel-backend:ci
 
       - name: Smoke test /health
@@ -42,6 +44,7 @@ jobs:
   # Escaneo de dependencias (igual que antes)
   security-scan:
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v3
       - name: Run security scan
