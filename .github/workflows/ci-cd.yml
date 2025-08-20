@@ -1,0 +1,90 @@
+name: Hotel Costa Bella CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  # CI mínimo: construye la imagen del backend y hace smoke test al /health
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build backend image
+        run: docker build -t hotel-backend:ci .
+
+      - name: Run backend container (SQLite)
+        env:
+          WEATHER_API_KEY: ${{ secrets.WEATHER_API_KEY }}
+        run: |
+          docker run -d --name backend -p 8000:8000 \
+            -e DATABASE_URL=sqlite:////data/hotel_reservas_ci.db \
+            -e WEATHER_API_KEY="${WEATHER_API_KEY:-demo_key}" \
+            -v ci_db:/data \
+            hotel-backend:ci
+
+      - name: Smoke test /health
+        run: |
+          for i in {1..30}; do
+            if curl -fsS http://localhost:8000/health; then
+              echo "✅ Backend healthy"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "❌ Backend failed to start"
+          docker logs backend
+          exit 1
+
+  # Escaneo de dependencias (igual que antes)
+  security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Run security scan
+        uses: pypa/gh-action-pip-audit@v1.0.8
+        with:
+          inputs: backend/requirements.txt
+
+  # Build & push de imagen a GHCR (igual que antes)
+  docker-build:
+    needs: [smoke, security-scan]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      - name: Login to Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/hotel-costa-bella:latest
+            ghcr.io/${{ github.repository }}/hotel-costa-bella:${{ github.sha }}
+
+  # Placeholders de despliegue (si luego quieres activarlos)
+  deploy-staging:
+    needs: docker-build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/develop'
+    steps:
+      - name: Deploy to staging
+        run: echo "🚀 Deploy to staging (placeholder)"
+
+  deploy-production:
+    needs: docker-build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - name: Deploy to production
+        run: echo "🚀 Deploy to production (placeholder)"
