@@ -6,6 +6,12 @@ from typing import Optional, List
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 import pathlib
+from pydantic import BaseModel, EmailStr
+import sqlite3, os
+from typing import Optional
+from pydantic import BaseModel, EmailStr
+import bleach, sqlite3, os
+from fastapi import HTTPException
 
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -594,4 +600,69 @@ def dashboard_test():
             "/reservations"
         ],
         "timestamp": datetime.utcnow().isoformat()
+    }
+
+# --- SEGURIDAD: registro con sanitización (respuesta limpia) ---
+
+class UserCreate(BaseModel):
+    username: str
+    email: EmailStr
+    comment: Optional[str] = None
+
+class UserOut(BaseModel):
+    id: int
+    username: str
+    email: EmailStr
+    comment: Optional[str] = None
+
+def _sqlite_path_from_url(url: str) -> str:
+    if url.startswith("sqlite:////"):
+        return url.replace("sqlite:////", "/")
+    if url.startswith("sqlite:///"):
+        return url.replace("sqlite:///", "")
+    return url
+
+DB_URL = os.getenv("DATABASE_URL", "sqlite:///./hotel_reservas.db")
+DB_PATH = _sqlite_path_from_url(DB_URL)
+
+def ensure_users_table():
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                email TEXT UNIQUE NOT NULL,
+                comment TEXT
+            );
+        """)
+        conn.commit()
+
+@app.on_event("startup")
+def _startup_create_users():
+    ensure_users_table()
+
+@app.post("/register", response_model=UserOut, tags=["security"])
+def register(user: UserCreate):
+    # permite <b>, <i>, <strong>, <em> y remueve todo lo demás (incl. <script>)
+    allowed = ["b", "i", "strong", "em"]
+    safe_comment = bleach.clean(user.comment or "", tags=allowed, attributes={}, strip=True)
+
+    with sqlite3.connect(DB_PATH) as conn:
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "INSERT INTO users (username, email, comment) VALUES (?, ?, ?)",
+                (user.username.strip(), user.email, safe_comment),
+            )
+            user_id = cur.lastrowid
+            conn.commit()
+        except sqlite3.IntegrityError:
+            raise HTTPException(status_code=400, detail="Usuario o email ya existe")
+
+    # pa probarsh en el post --- error en el return 
+    return {
+        "id": user_id,
+        "username": user.username.strip(),
+        "email": user.email,
+        "comment": safe_comment,
     }
